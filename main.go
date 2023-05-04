@@ -65,6 +65,34 @@ func main() {
 		}{userID}
 		json.NewEncoder(w).Encode(response)
 	})
+	
+	http.HandleFunc("/signin", func(w http.ResponseWriter, r *http.Request) {
+		// Parse the request body into a hornetUser struct
+		var user hornetUser
+		err := json.NewDecoder(r.Body).Decode(&user)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Query the database for the user's email and password
+		row := db.QueryRow("SELECT id, name FROM users WHERE email = $1 AND password = $2", user.Email, user.Password)
+
+		// Scan the row into a User struct
+		var matchedUser User
+		err = row.Scan(&matchedUser.ID, &matchedUser.Name)
+		if err != nil {
+			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+			return
+		}
+
+		// Respond with the matched user's ID and name
+		response := struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		}{matchedUser.ID, matchedUser.Name}
+		json.NewEncoder(w).Encode(response)
+	})
 
 	// Start the server
 	log.Println("Server listening on 5432")
