@@ -34,7 +34,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Create a new HTTP server
+	// Create the signup api for the client.
+	
 	http.HandleFunc("/signup", func(w http.ResponseWriter, r *http.Request) {
 		// Parse the request body into a User struct
 		var user hornetUser
@@ -65,6 +66,9 @@ func main() {
 		}{userID}
 		json.NewEncoder(w).Encode(response)
 	})
+	
+	
+	// This part will expose the signin api to the client.
 	
 	http.HandleFunc("/signin", func(w http.ResponseWriter, r *http.Request) {
 		// Parse the request body into a hornetUser struct
