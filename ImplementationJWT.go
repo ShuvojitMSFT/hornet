@@ -14,15 +14,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const (
-	host     = "<your-postgresql-host>"
-	port     = <your-postgresql-port>
-	user     = "<your-postgresql-username>"
-	password = "<your-postgresql-password>"
-	dbname   = "<your-postgresql-database-name>"
-)
 
-var jwtKey = []byte("<your-jwt-secret-key>")
+
 
 type User struct {
 	Username string `json:"username"`
@@ -109,3 +102,10 @@ func main() {
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 		tokenString, err := token.SignedString(jwtKey)
 		if err != nil {
+			
+			
+			
+			
+			
+			
+			
