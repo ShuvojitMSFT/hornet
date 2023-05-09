@@ -1,127 +1,185 @@
 package main
 
 import (
+	// "database/sql"
 	"database/sql"
-    "encoding/json"
-    "fmt"
-    "log"
-    "net/http"
-    "time"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
 
-    _ "github.com/lib/pq"
-    "github.com/gorilla/mux"
-    "github.com/gorilla/context"
+	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
-
-type hornetUserSignin struct {
-	ID       int    `json:"id"`
-	Name     string `json:"name"`
+type User struct {
+	UserID   int    `json:"userid"`
+	Username string `json:"username"`
+	City     string `json:"city"`
 	Email    string `json:"email"`
-	Password string `json:"password"`
 }
 
-type hornetUserSignup struct {
-	ID       int    `json:"id"`
-	Name     string `json:"name"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+type JsonResponse struct {
+	Type    string
+	Data    []User
+	Message string
 }
 
+// load .env file
+func goDotEnvVariable(key string) string {
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Fatalf("Error loading .env file")
+	}
+	return os.Getenv(key)
+}
 
+// connect to the database and return it as an object
+// This is an exmple of connection leak
+func dbConn() (db *sql.DB) {
+	// pass the db credentials into variables
+	host := goDotEnvVariable("DBHOST")
+	port := goDotEnvVariable("DBPORT")
+	dbUser := goDotEnvVariable("DBUSER")
+	dbPass := goDotEnvVariable("DBPASS")
+	dbname := goDotEnvVariable("DBNAME")
+	// create a connection string
+	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s "+
+		"password=%s dbname=%s sslmode=disable",
+		host, port, dbUser, dbPass, dbname)
+	db, err := sql.Open("postgres", psqlInfo)
+	if err != nil {
+		panic(err)
+	}
+	return db
+}
 
 func main() {
+	db := dbConn()
 
-	dbConnStr := "host=34.72.216.95 port=5432 user=hornetapi password=KonamiCode001 dbname=hornet sslmode=disable"
-
-	db, err := sql.Open("postgres", dbConnStr)
-	if err != nil {
-		log.Fatal(err)
+	pingErr := db.Ping()
+	if pingErr != nil {
+		log.Fatal(pingErr)
 	}
-	defer db.Close()
+	fmt.Println("Connected!")
 
-	// Test the database connection
-	err = db.Ping()
-	if err != nil {
-		log.Fatal(err)
+	// Init the mux router
+	router := mux.NewRouter()
+
+	// Route handles & endpoints
+
+	// Get all users
+	router.HandleFunc("/users/", GetUsers).Methods("GET")
+
+	// Create a user
+	router.HandleFunc("/SignUp/", SignUp).Methods("POST")
+
+	//login
+	router.HandleFunc("/login/{user_id}/", Login).Methods("POST")
+
+	// serve the app
+	fmt.Println("Server at 10000")
+	log.Fatal(http.ListenAndServe(":10000", router))
+
+}
+
+func Login(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	userID := params["userid"]
+	password := params["password"]
+
+	var response = JsonResponse{}
+
+	if userID == "" {
+		response = JsonResponse{Type: "error", Message: "Enter a valid userID"}
+	} else {
+		var passcodematch string
+		db := dbConn()
+		getPassword := `SELECT "password" FROM public."users" WHERE id=$1`
+		outPassword := db.QueryRow(getPassword, userID)
+		err := outPassword.Scan(&passcodematch)
+		if err != nil {
+			panic(err)
+		}
+
+		if password == passcodematch {
+			fmt.Println("The password is a match. You shall be supplied with a token shortly.")
+
+		} else {
+			fmt.Println("The password does not match")
+		}
+
 	}
 
-	// Create the signup api for the client.
-	
-	http.HandleFunc("/signup", func(w http.ResponseWriter, r *http.Request) {
-		// Parse the request body into a User struct
-		var user hornetUserSignup
-		err := json.NewDecoder(r.Body).Decode(&user)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+	json.NewEncoder(w).Encode(response)
+}
 
-		// Insert the user into the database
-		stmt, err := db.Prepare("INSERT INTO hornet(name, email, password) VALUES($1, $2, $3) RETURNING id")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer stmt.Close()
+func GetUsers(w http.ResponseWriter, r *http.Request) {
 
-		var userID int
-		err = stmt.QueryRow(user.Name, user.Email, user.Password).Scan(&userID)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	db := dbConn()
 
-		// Respond with the new user's ID
-		response := struct {
-			ID int `json:"id"`
-		}{userID}
-		json.NewEncoder(w).Encode(response)
-	})
-	
-	
-	// This part will expose the signin api to the client.
-	
-	http.HandleFunc("/signin", func(w http.ResponseWriter, r *http.Request) {
-		// Parse the request body into a hornetUser struct
-		var user hornetUserSignin
-		err := json.NewDecoder(r.Body).Decode(&user)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+	fmt.Println("Getting users.")
+	rows, err := db.Query(`SELECT "user_id","username","city","email" FROM public."users"`)
 
-		// Query the database for the user's email and password
-		row := db.QueryRow("SELECT id, name FROM users WHERE email = $1 AND password = $2", user.Email, user.Password)
-
-		
-		var matchedUser hornetUserSignin
-		err = row.Scan(&matchedUser.ID, &matchedUser.Name)
-		if err != nil {
-			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
-			return
-		}
-
-		
-		response := struct {
-			ID   int    `json:"id"`
-			Name string `json:"name"`
-		}{matchedUser.ID, matchedUser.Name}
-		json.NewEncoder(w).Encode(response)
-	})
-	
-	
-
-
-
-// This part is if the server is on the local host. I am using a GCP instance of postgre
-
-/*		
-	// Start the server
-	log.Println("Server listening on 5432")
-	err = http.ListenAndServe("34.72.216.95:5432", nil)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
-	*/
+
+	var users []User
+
+	// Foreach user
+	for rows.Next() {
+		var id int
+		var username string
+		var city string
+		var email string
+
+		err = rows.Scan(&id, &username, &city, &email)
+		if err != nil {
+			panic(err)
+		}
+		users = append(users, User{UserID: id, Username: username, City: city, Email: email})
+		fmt.Println(id, username, city, email)
+	}
+
+	var response = JsonResponse{
+		Type:    "success",
+		Data:    users,
+		Message: "Done!",
+	}
+	fmt.Printf("The response is: %+v", response)
+	if json.NewEncoder(w).Encode(response) != nil {
+		panic(err)
+	}
+}
+
+func SignUp(w http.ResponseWriter, r *http.Request) {
+	user_id := r.FormValue("userID")
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+	city := r.FormValue("city")
+	email := r.FormValue("email")
+
+	var response = JsonResponse{}
+
+	if user_id == "" || username == "" || email == "" || password == "" {
+		response = JsonResponse{Type: "error", Message: "You are missing a mandatory field"}
+	} else {
+		db := dbConn()
+
+		fmt.Println("Inserting new user with ID: " + user_id + " and name: " + username)
+
+		var lastInsertID int
+		err := db.QueryRow("INSERT INTO users(user_id, username, password, city, email) VALUES($1, $2, $3, $4, $5) returning user_id;", user_id, username, password, city, email).Scan(&lastInsertID)
+
+		if err != nil {
+			panic(err)
+		}
+
+		response = JsonResponse{Type: "success", Message: "User has been signed up."}
+	}
+
+	json.NewEncoder(w).Encode(response)
 }
