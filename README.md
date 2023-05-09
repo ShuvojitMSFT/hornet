@@ -1,4 +1,4 @@
-# hornet
+# Installation
 1. Install PostGres on your local machine. I have used the one that is avaiable at https://www.postgresql.org/download/
 2. Instead of using SQL shell, I have used PGAdmin (4) to create databases and tables.
 3. Once you start the server, it should by default work on port 5432. If you wish to change it, you would need to specify that during installation. I am not certain if it can be modified later. But, there are conf files in the installation directory which should allow for this change to be done later as well.
